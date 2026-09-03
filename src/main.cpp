@@ -30,6 +30,7 @@
 #define DOWN_BUTTON 7
 #define BACK_BUTTON 15
 #define BATTERY_PIN 1
+void sendBLEData();
 
 // ---- SD card pins ----
 #define SD_CS 4
@@ -60,19 +61,47 @@ const unsigned long BLE_INTERVAL = 1000;
 // BLE CONNECTION CALLBACKS
 // ============================================================
 
+// class MyServerCallbacks : public BLEServerCallbacks
+// {
+
+//   void onConnect(BLEServer *pServer)
+//   {
+//     deviceConnected = true;
+//     Serial.println("Phone connected via BLE");
+//   }
+
+//   void onDisconnect(BLEServer *pServer)
+//   {
+//     deviceConnected = false;
+//     Serial.println("Phone disconnected");
+
+//     BLEDevice::startAdvertising();
+//   }
+// };
+
 class MyServerCallbacks : public BLEServerCallbacks
 {
-
   void onConnect(BLEServer *pServer)
   {
     deviceConnected = true;
-    Serial.println("Phone connected via BLE");
+
+    Serial.println();
+    Serial.println("================================");
+    Serial.println("PHONE CONNECTED VIA BLE");
+    Serial.println("================================");
   }
 
   void onDisconnect(BLEServer *pServer)
   {
     deviceConnected = false;
-    Serial.println("Phone disconnected");
+
+    Serial.println();
+    Serial.println("================================");
+    Serial.println("PHONE DISCONNECTED");
+    Serial.println("Restarting BLE advertising...");
+    Serial.println("================================");
+
+    delay(500);
 
     BLEDevice::startAdvertising();
   }
@@ -631,10 +660,170 @@ void bootSequence()
   delay(300);
 }
 
+// void setupBLE()
+// {
+
+//   Serial.println("Starting BLE...");
+
+//   BLEDevice::init("ColdStorage-ESP32");
+
+//   pServer = BLEDevice::createServer();
+
+//   pServer->setCallbacks(new MyServerCallbacks());
+
+//   BLEService *pService =
+//       pServer->createService(SERVICE_UUID);
+
+//   pCharacteristic =
+//       pService->createCharacteristic(
+
+//           CHARACTERISTIC_UUID,
+
+//           BLECharacteristic::PROPERTY_READ |
+//               BLECharacteristic::PROPERTY_NOTIFY
+
+//       );
+
+//   pCharacteristic->addDescriptor(
+//       new BLE2902());
+
+//   pCharacteristic->setValue("Cold Storage Ready");
+
+//   pService->start();
+
+//   BLEAdvertising *pAdvertising =
+//       BLEDevice::getAdvertising();
+
+//   pAdvertising->addServiceUUID(SERVICE_UUID);
+
+//   pAdvertising->setScanResponse(true);
+
+//   BLEDevice::startAdvertising();
+
+//   Serial.println("BLE Advertising Started");
+// }
+
+class MyCharacteristicCallbacks : public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *pCharacteristic)
+  {
+    String command = pCharacteristic->getValue().c_str();
+
+    if (command.length() == 0)
+      return;
+
+    Serial.println();
+    Serial.println("================================");
+    Serial.println("BLE COMMAND RECEIVED");
+    Serial.print("Command: ");
+    Serial.println(command);
+    Serial.println("================================");
+
+    // -----------------------------------------
+    // MODE OFF
+    // -----------------------------------------
+    if (command == "MODE_OFF")
+    {
+      homeMode = MODE_OFF;
+      savePrefs();
+
+      Serial.println("Mode changed to OFF");
+    }
+
+    // -----------------------------------------
+    // MODE AUTO
+    // -----------------------------------------
+    else if (command == "MODE_AUTO")
+    {
+      homeMode = MODE_AUTO;
+      savePrefs();
+
+      Serial.println("Mode changed to AUTO");
+    }
+
+    // -----------------------------------------
+    // MODE ON
+    // -----------------------------------------
+    else if (command == "MODE_ON")
+    {
+      homeMode = MODE_ON;
+      savePrefs();
+
+      Serial.println("Mode changed to ON");
+    }
+
+    // -----------------------------------------
+    // TEC ON
+    // -----------------------------------------
+    else if (command == "TEC_ON")
+    {
+      if (tecAllowed)
+      {
+        homeMode = MODE_ON;
+
+        Serial.println("TEC forced ON");
+      }
+      else
+      {
+        Serial.println("TEC ON rejected - low battery");
+      }
+    }
+
+    // -----------------------------------------
+    // TEC OFF
+    // -----------------------------------------
+    else if (command == "TEC_OFF")
+    {
+      homeMode = MODE_OFF;
+
+      Serial.println("TEC forced OFF");
+    }
+
+    // -----------------------------------------
+    // SET TEMPERATURE
+    // Example: SET_TEMP:25.5
+    // -----------------------------------------
+    else if (command.startsWith("SET_TEMP:"))
+    {
+      String valueString = command.substring(9);
+
+      float newTemp = valueString.toFloat();
+
+      if (newTemp >= -10.0 && newTemp <= 50.0)
+      {
+        setTemp = newTemp;
+
+        savePrefs();
+
+        Serial.print("Set temperature changed to: ");
+        Serial.println(setTemp);
+      }
+      else
+      {
+        Serial.println("Invalid temperature");
+      }
+    }
+
+    else
+    {
+      Serial.print("Unknown BLE command: ");
+      Serial.println(command);
+    }
+
+    // Immediately apply new settings
+    updateTEC();
+
+    // Send updated state back to phone
+    sendBLEData();
+  }
+};
+
 void setupBLE()
 {
-
+  Serial.println();
+  Serial.println("================================");
   Serial.println("Starting BLE...");
+  Serial.println("================================");
 
   BLEDevice::init("ColdStorage-ESP32");
 
@@ -645,23 +834,34 @@ void setupBLE()
   BLEService *pService =
       pServer->createService(SERVICE_UUID);
 
+  // pCharacteristic =
+  //     pService->createCharacteristic(
+  //         CHARACTERISTIC_UUID,
+  //         BLECharacteristic::PROPERTY_READ |
+  //             BLECharacteristic::PROPERTY_NOTIFY);
+
   pCharacteristic =
       pService->createCharacteristic(
-
           CHARACTERISTIC_UUID,
-
           BLECharacteristic::PROPERTY_READ |
-              BLECharacteristic::PROPERTY_NOTIFY
+              BLECharacteristic::PROPERTY_WRITE |
+              BLECharacteristic::PROPERTY_WRITE_NR |
+              BLECharacteristic::PROPERTY_NOTIFY);
 
-      );
-
+  // Required descriptor for notifications
   pCharacteristic->addDescriptor(
       new BLE2902());
 
-  pCharacteristic->setValue("Cold Storage Ready");
+  pCharacteristic->setCallbacks(
+      new MyCharacteristicCallbacks());
 
+  // Initial value
+  pCharacteristic->setValue("READY");
+
+  // Start service
   pService->start();
 
+  // Configure advertising
   BLEAdvertising *pAdvertising =
       BLEDevice::getAdvertising();
 
@@ -669,9 +869,21 @@ void setupBLE()
 
   pAdvertising->setScanResponse(true);
 
+  // Start advertising
   BLEDevice::startAdvertising();
 
+  Serial.println("BLE SERVICE STARTED");
+  Serial.print("Device Name: ");
+  Serial.println("ColdStorage-ESP32");
+
+  Serial.print("Service UUID: ");
+  Serial.println(SERVICE_UUID);
+
+  Serial.print("Characteristic UUID: ");
+  Serial.println(CHARACTERISTIC_UUID);
+
   Serial.println("BLE Advertising Started");
+  Serial.println("================================");
 }
 
 void sendBLEData()
@@ -727,9 +939,6 @@ void setup()
   Serial.println();
   Serial.println("ESP32 STARTED");
 
-  // rest of setup...
-  Serial.begin(115200);
-  delay(500);
   Serial.println("=== TEC Controller ===");
 
   loadPrefs();
@@ -1063,7 +1272,7 @@ void loop()
 
   // ---- LCD refresh ----
   static unsigned long lastLCD = 0;
-  if (millis() - lastLCD >= 40)
+  if (millis() - lastLCD >= 250)
   {
     lastLCD = millis();
     updateLCD();
