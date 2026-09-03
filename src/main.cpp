@@ -60,19 +60,47 @@ const unsigned long BLE_INTERVAL = 1000;
 // BLE CONNECTION CALLBACKS
 // ============================================================
 
+// class MyServerCallbacks : public BLEServerCallbacks
+// {
+
+//   void onConnect(BLEServer *pServer)
+//   {
+//     deviceConnected = true;
+//     Serial.println("Phone connected via BLE");
+//   }
+
+//   void onDisconnect(BLEServer *pServer)
+//   {
+//     deviceConnected = false;
+//     Serial.println("Phone disconnected");
+
+//     BLEDevice::startAdvertising();
+//   }
+// };
+
 class MyServerCallbacks : public BLEServerCallbacks
 {
-
   void onConnect(BLEServer *pServer)
   {
     deviceConnected = true;
-    Serial.println("Phone connected via BLE");
+
+    Serial.println();
+    Serial.println("================================");
+    Serial.println("PHONE CONNECTED VIA BLE");
+    Serial.println("================================");
   }
 
   void onDisconnect(BLEServer *pServer)
   {
     deviceConnected = false;
-    Serial.println("Phone disconnected");
+
+    Serial.println();
+    Serial.println("================================");
+    Serial.println("PHONE DISCONNECTED");
+    Serial.println("Restarting BLE advertising...");
+    Serial.println("================================");
+
+    delay(500);
 
     BLEDevice::startAdvertising();
   }
@@ -631,10 +659,55 @@ void bootSequence()
   delay(300);
 }
 
+// void setupBLE()
+// {
+
+//   Serial.println("Starting BLE...");
+
+//   BLEDevice::init("ColdStorage-ESP32");
+
+//   pServer = BLEDevice::createServer();
+
+//   pServer->setCallbacks(new MyServerCallbacks());
+
+//   BLEService *pService =
+//       pServer->createService(SERVICE_UUID);
+
+//   pCharacteristic =
+//       pService->createCharacteristic(
+
+//           CHARACTERISTIC_UUID,
+
+//           BLECharacteristic::PROPERTY_READ |
+//               BLECharacteristic::PROPERTY_NOTIFY
+
+//       );
+
+//   pCharacteristic->addDescriptor(
+//       new BLE2902());
+
+//   pCharacteristic->setValue("Cold Storage Ready");
+
+//   pService->start();
+
+//   BLEAdvertising *pAdvertising =
+//       BLEDevice::getAdvertising();
+
+//   pAdvertising->addServiceUUID(SERVICE_UUID);
+
+//   pAdvertising->setScanResponse(true);
+
+//   BLEDevice::startAdvertising();
+
+//   Serial.println("BLE Advertising Started");
+// }
+
 void setupBLE()
 {
-
+  Serial.println();
+  Serial.println("================================");
   Serial.println("Starting BLE...");
+  Serial.println("================================");
 
   BLEDevice::init("ColdStorage-ESP32");
 
@@ -647,21 +720,21 @@ void setupBLE()
 
   pCharacteristic =
       pService->createCharacteristic(
-
           CHARACTERISTIC_UUID,
-
           BLECharacteristic::PROPERTY_READ |
-              BLECharacteristic::PROPERTY_NOTIFY
+              BLECharacteristic::PROPERTY_NOTIFY);
 
-      );
-
+  // Required descriptor for notifications
   pCharacteristic->addDescriptor(
       new BLE2902());
 
-  pCharacteristic->setValue("Cold Storage Ready");
+  // Initial value
+  pCharacteristic->setValue("READY");
 
+  // Start service
   pService->start();
 
+  // Configure advertising
   BLEAdvertising *pAdvertising =
       BLEDevice::getAdvertising();
 
@@ -669,9 +742,21 @@ void setupBLE()
 
   pAdvertising->setScanResponse(true);
 
+  // Start advertising
   BLEDevice::startAdvertising();
 
+  Serial.println("BLE SERVICE STARTED");
+  Serial.print("Device Name: ");
+  Serial.println("ColdStorage-ESP32");
+
+  Serial.print("Service UUID: ");
+  Serial.println(SERVICE_UUID);
+
+  Serial.print("Characteristic UUID: ");
+  Serial.println(CHARACTERISTIC_UUID);
+
   Serial.println("BLE Advertising Started");
+  Serial.println("================================");
 }
 
 void sendBLEData()
@@ -727,9 +812,6 @@ void setup()
   Serial.println();
   Serial.println("ESP32 STARTED");
 
-  // rest of setup...
-  Serial.begin(115200);
-  delay(500);
   Serial.println("=== TEC Controller ===");
 
   loadPrefs();
@@ -1063,7 +1145,7 @@ void loop()
 
   // ---- LCD refresh ----
   static unsigned long lastLCD = 0;
-  if (millis() - lastLCD >= 40)
+  if (millis() - lastLCD >= 250)
   {
     lastLCD = millis();
     updateLCD();
