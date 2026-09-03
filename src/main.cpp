@@ -30,6 +30,7 @@
 #define DOWN_BUTTON 7
 #define BACK_BUTTON 15
 #define BATTERY_PIN 1
+void sendBLEData();
 
 // ---- SD card pins ----
 #define SD_CS 4
@@ -702,6 +703,121 @@ void bootSequence()
 //   Serial.println("BLE Advertising Started");
 // }
 
+class MyCharacteristicCallbacks : public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *pCharacteristic)
+  {
+    String command = pCharacteristic->getValue().c_str();
+
+    if (command.length() == 0)
+      return;
+
+    Serial.println();
+    Serial.println("================================");
+    Serial.println("BLE COMMAND RECEIVED");
+    Serial.print("Command: ");
+    Serial.println(command);
+    Serial.println("================================");
+
+    // -----------------------------------------
+    // MODE OFF
+    // -----------------------------------------
+    if (command == "MODE_OFF")
+    {
+      homeMode = MODE_OFF;
+      savePrefs();
+
+      Serial.println("Mode changed to OFF");
+    }
+
+    // -----------------------------------------
+    // MODE AUTO
+    // -----------------------------------------
+    else if (command == "MODE_AUTO")
+    {
+      homeMode = MODE_AUTO;
+      savePrefs();
+
+      Serial.println("Mode changed to AUTO");
+    }
+
+    // -----------------------------------------
+    // MODE ON
+    // -----------------------------------------
+    else if (command == "MODE_ON")
+    {
+      homeMode = MODE_ON;
+      savePrefs();
+
+      Serial.println("Mode changed to ON");
+    }
+
+    // -----------------------------------------
+    // TEC ON
+    // -----------------------------------------
+    else if (command == "TEC_ON")
+    {
+      if (tecAllowed)
+      {
+        homeMode = MODE_ON;
+
+        Serial.println("TEC forced ON");
+      }
+      else
+      {
+        Serial.println("TEC ON rejected - low battery");
+      }
+    }
+
+    // -----------------------------------------
+    // TEC OFF
+    // -----------------------------------------
+    else if (command == "TEC_OFF")
+    {
+      homeMode = MODE_OFF;
+
+      Serial.println("TEC forced OFF");
+    }
+
+    // -----------------------------------------
+    // SET TEMPERATURE
+    // Example: SET_TEMP:25.5
+    // -----------------------------------------
+    else if (command.startsWith("SET_TEMP:"))
+    {
+      String valueString = command.substring(9);
+
+      float newTemp = valueString.toFloat();
+
+      if (newTemp >= -10.0 && newTemp <= 50.0)
+      {
+        setTemp = newTemp;
+
+        savePrefs();
+
+        Serial.print("Set temperature changed to: ");
+        Serial.println(setTemp);
+      }
+      else
+      {
+        Serial.println("Invalid temperature");
+      }
+    }
+
+    else
+    {
+      Serial.print("Unknown BLE command: ");
+      Serial.println(command);
+    }
+
+    // Immediately apply new settings
+    updateTEC();
+
+    // Send updated state back to phone
+    sendBLEData();
+  }
+};
+
 void setupBLE()
 {
   Serial.println();
@@ -718,15 +834,26 @@ void setupBLE()
   BLEService *pService =
       pServer->createService(SERVICE_UUID);
 
+  // pCharacteristic =
+  //     pService->createCharacteristic(
+  //         CHARACTERISTIC_UUID,
+  //         BLECharacteristic::PROPERTY_READ |
+  //             BLECharacteristic::PROPERTY_NOTIFY);
+
   pCharacteristic =
       pService->createCharacteristic(
           CHARACTERISTIC_UUID,
           BLECharacteristic::PROPERTY_READ |
+              BLECharacteristic::PROPERTY_WRITE |
+              BLECharacteristic::PROPERTY_WRITE_NR |
               BLECharacteristic::PROPERTY_NOTIFY);
 
   // Required descriptor for notifications
   pCharacteristic->addDescriptor(
       new BLE2902());
+
+  pCharacteristic->setCallbacks(
+      new MyCharacteristicCallbacks());
 
   // Initial value
   pCharacteristic->setValue("READY");

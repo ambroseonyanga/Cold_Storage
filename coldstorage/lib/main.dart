@@ -44,8 +44,37 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   static const String serviceUuid = "12345678-1234-1234-1234-1234567890ab";
 
+  BluetoothCharacteristic? controlCharacteristic;
+
   static const String characteristicUuid =
       "abcd1234-5678-5678-5678-abcdef123456";
+
+  Future<void> sendCommand(String command) async {
+    if (controlCharacteristic == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Not connected to the ESP32")),
+      );
+      return;
+    }
+
+    try {
+      debugPrint("Sending BLE command: $command");
+
+      await controlCharacteristic!.write(
+        utf8.encode(command),
+        withoutResponse: false,
+      );
+
+      debugPrint("Command sent successfully");
+    } catch (e) {
+      debugPrint("Command failed: $e");
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Command failed: $e")));
+    }
+  }
 
   // ----------------------------------------------------------
   // BLE STATE
@@ -257,6 +286,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
             if (characteristic.uuid.toString().toLowerCase() ==
                 characteristicUuid.toLowerCase()) {
               characteristicFound = true;
+              controlCharacteristic = characteristic;
 
               debugPrint("✓ CORRECT CHARACTERISTIC FOUND!");
 
@@ -510,6 +540,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
               connectionStatus: connectionStatus,
 
               onDisconnect: disconnectDevice,
+
+              sendCommand: sendCommand,
             ),
     );
   }
@@ -650,6 +682,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
 // ============================================================
 
 class Dashboard extends StatelessWidget {
+  final Future<void> Function(String command) sendCommand;
+
   final String deviceName;
 
   final double temperature;
@@ -680,48 +714,89 @@ class Dashboard extends StatelessWidget {
     required this.connectionStatus,
 
     required this.onDisconnect,
+
+    required this.sendCommand,
   });
 
   // ============================================================
   // DASHBOARD CARD
   // ============================================================
 
+  // Widget buildCard(String title, String value, IconData icon) {
+  //   return Card(
+  //     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+
+  //     elevation: 2,
+
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(20),
+
+  //       child: Row(
+  //         children: [
+  //           Icon(icon, size: 42),
+
+  //           const SizedBox(width: 20),
+
+  //           Expanded(
+  //             child: Column(
+  //               crossAxisAlignment: CrossAxisAlignment.start,
+
+  //               children: [
+  //                 Text(title, style: const TextStyle(fontSize: 16)),
+
+  //                 const SizedBox(height: 6),
+
+  //                 Text(
+  //                   value,
+
+  //                   style: const TextStyle(
+  //                     fontSize: 28,
+  //                     fontWeight: FontWeight.bold,
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+
   Widget buildCard(String title, String value, IconData icon) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Expanded(
+      child: Card(
+        margin: const EdgeInsets.all(4),
+        elevation: 2,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 24),
 
-      elevation: 2,
+              const SizedBox(height: 5),
 
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-
-        child: Row(
-          children: [
-            Icon(icon, size: 42),
-
-            const SizedBox(width: 20),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 16)),
-
-                  const SizedBox(height: 6),
-
-                  Text(
-                    value,
-
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 4),
+
+              Text(
+                value,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -734,7 +809,8 @@ class Dashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.only(top: 25),
+      // padding: const EdgeInsets.only(top: 25),
+      padding: const EdgeInsets.only(top: 10),
 
       children: [
         // ------------------------------------------------------
@@ -768,47 +844,225 @@ class Dashboard extends StatelessWidget {
           ),
         ),
 
+        // const SizedBox(height: 20),
+        const SizedBox(height: 10),
+
+        // // ------------------------------------------------------
+        // // TEMPERATURE
+        // // ------------------------------------------------------
+        // buildCard(
+        //   "Current Temperature",
+
+        //   "${temperature.toStringAsFixed(1)} °C",
+
+        //   Icons.thermostat,
+        // ),
+
+        // // ------------------------------------------------------
+        // // SET TEMPERATURE
+        // // ------------------------------------------------------
+        // buildCard(
+        //   "Set Temperature",
+
+        //   "${setTemp.toStringAsFixed(1)} °C",
+
+        //   Icons.tune,
+        // ),
+
+        // // ------------------------------------------------------
+        // // BATTERY
+        // // ------------------------------------------------------
+        // buildCard(
+        //   "Battery Voltage",
+
+        //   "${battery.toStringAsFixed(2)} V",
+
+        //   Icons.battery_full,
+        // ),
+
+        // // ------------------------------------------------------
+        // // TEC
+        // // ------------------------------------------------------
+        // buildCard("TEC Status", tec, Icons.ac_unit),
+
+        // const SizedBox(height: 25),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              buildCard(
+                "Temperature",
+                "${temperature.toStringAsFixed(1)} °C",
+                Icons.thermostat,
+              ),
+
+              buildCard(
+                "Set Temp",
+                "${setTemp.toStringAsFixed(1)} °C",
+                Icons.tune,
+              ),
+
+              buildCard(
+                "Battery",
+                "${battery.toStringAsFixed(2)} V",
+                Icons.battery_full,
+              ),
+
+              buildCard("TEC", tec, Icons.ac_unit),
+            ],
+          ),
+        ),
+        // ----------------------------------------------------------------------
+        //DASHBOARD CONROLS
+        // ----------------------------------------------------------------------
         const SizedBox(height: 20),
 
-        // ------------------------------------------------------
-        // TEMPERATURE
-        // ------------------------------------------------------
-        buildCard(
-          "Current Temperature",
-
-          "${temperature.toStringAsFixed(1)} °C",
-
-          Icons.thermostat,
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            "Operating Mode",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
         ),
 
-        // ------------------------------------------------------
-        // SET TEMPERATURE
-        // ------------------------------------------------------
-        buildCard(
-          "Set Temperature",
+        const SizedBox(height: 10),
 
-          "${setTemp.toStringAsFixed(1)} °C",
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    sendCommand("MODE_OFF");
+                  },
+                  child: const Text("OFF"),
+                ),
+              ),
 
-          Icons.tune,
+              const SizedBox(width: 8),
+
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    sendCommand("MODE_AUTO");
+                  },
+                  child: const Text("AUTO"),
+                ),
+              ),
+
+              const SizedBox(width: 8),
+
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    sendCommand("MODE_ON");
+                  },
+                  child: const Text("ON"),
+                ),
+              ),
+            ],
+          ),
         ),
-
-        // ------------------------------------------------------
-        // BATTERY
-        // ------------------------------------------------------
-        buildCard(
-          "Battery Voltage",
-
-          "${battery.toStringAsFixed(2)} V",
-
-          Icons.battery_full,
-        ),
-
-        // ------------------------------------------------------
-        // TEC
-        // ------------------------------------------------------
-        buildCard("TEC Status", tec, Icons.ac_unit),
 
         const SizedBox(height: 25),
+
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            "Temperature Control",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                iconSize: 40,
+                onPressed: () {
+                  final newTemp = setTemp - 0.5;
+
+                  if (newTemp >= -10.0) {
+                    sendCommand("SET_TEMP:${newTemp.toStringAsFixed(1)}");
+                  }
+                },
+                icon: const Icon(Icons.remove_circle),
+              ),
+
+              const SizedBox(width: 20),
+
+              Text(
+                "${setTemp.toStringAsFixed(1)} °C",
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(width: 20),
+
+              IconButton(
+                iconSize: 40,
+                onPressed: () {
+                  final newTemp = setTemp + 0.5;
+
+                  if (newTemp <= 50.0) {
+                    sendCommand("SET_TEMP:${newTemp.toStringAsFixed(1)}");
+                  }
+                },
+                icon: const Icon(Icons.add_circle),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 25),
+
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            "TEC Control",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+        ),
+
+        const SizedBox(height: 10),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    sendCommand("TEC_ON");
+                  },
+                  icon: const Icon(Icons.power),
+                  label: const Text("TEC ON"),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    sendCommand("TEC_OFF");
+                  },
+                  icon: const Icon(Icons.power_off),
+                  label: const Text("TEC OFF"),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // ----------------------------------------------------------------------
+        //END DASHBOARD CONTROLS
 
         // ------------------------------------------------------
         // DISCONNECT BUTTON
